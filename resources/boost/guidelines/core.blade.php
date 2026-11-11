@@ -4,7 +4,7 @@ This package automatically tracks and logs every AI agent call (tokens, cost, du
 
 ### Auto-Discovery (Zero Config)
 
-If `laravel/ai` is installed, the package works **out of the box** — no code needed. It listens for `PromptingAgent` and `AgentPrompted` events and creates a complete log entry for every AI call. To disable: set `auto_discover` to `false` in `config/ai-usage.php`.
+If `laravel/ai` is installed, the package listens for `PromptingAgent` and `AgentPrompted` to track prompts from `processing` to `completed`. Failover attempts sharing an invocation ID reuse the same log. With SDK v0.11.0+, `AgentFailed` immediately records terminal failures, including streaming failures; exception details are stored in `response_meta.error.type` and `response_meta.error.message`. Keep `ai-usage:mark-stale-failed` scheduled as a fallback for older SDKs and abruptly terminated processes. To disable automatic logging, set `auto_discover` to `false` in `config/ai-usage.php`.
 
 ### Manual Logging
 

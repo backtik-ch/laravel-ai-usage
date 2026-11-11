@@ -74,7 +74,9 @@ return [
     |--------------------------------------------------------------------------
     |
     | Processing records older than this many minutes are considered stale
-    | (the AI call likely failed without firing a completion event).
+    | when no terminal event was received, for example with an older SDK
+    | or an abruptly terminated process. SDK v0.11.0+ failures are logged
+    | immediately through AgentFailed when auto-discovery is enabled.
     | Run `ai-usage:mark-stale-failed` on a schedule to clean these up.
     |
     */

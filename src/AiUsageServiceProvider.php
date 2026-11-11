@@ -50,6 +50,13 @@ class AiUsageServiceProvider extends ServiceProvider
                 \Laravel\Ai\Events\AgentPrompted::class,
                 Listeners\LogAgentPrompted::class,
             );
+
+            if (class_exists(\Laravel\Ai\Events\AgentFailed::class)) {
+                Event::listen(
+                    \Laravel\Ai\Events\AgentFailed::class,
+                    Listeners\LogAgentFailed::class,
+                );
+            }
         }
     }
 

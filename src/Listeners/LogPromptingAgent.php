@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Log;
 class LogPromptingAgent
 {
     /**
-     * Create a pending AI usage record when an agent prompt begins.
+     * Create a processing AI usage record when an agent prompt begins.
      */
     public function handle(object $event): void
     {
@@ -55,7 +55,9 @@ class LogPromptingAgent
                     : $userPrompt;
             }
 
-            AiUsageLog::query()->create($data);
+            AiUsageLog::query()
+                ->where('request_meta->invocation_id', $event->invocationId)
+                ->firstOrCreate([], $data);
         } catch (\Throwable $e) {
             Log::error('[laravel-ai-usage] Failed to log prompting agent.', [
                 'error' => $e->getMessage(),

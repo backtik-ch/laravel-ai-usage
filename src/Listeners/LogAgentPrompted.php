@@ -28,11 +28,11 @@ class LogAgentPrompted
             $data = [
                 'driver' => $meta->provider,
                 'model' => $meta->model,
-                'prompt_tokens' => $usage->promptTokens,
-                'completion_tokens' => $usage->completionTokens,
-                'cache_write_tokens' => $usage->cacheWriteInputTokens,
-                'cache_read_tokens' => $usage->cacheReadInputTokens,
-                'reasoning_tokens' => $usage->reasoningTokens,
+                'prompt_tokens' => $usage->promptTokens ?? $usage->uncachedInputTokens(),
+                'completion_tokens' => $usage->completionTokens ?? ($usage->outputTokens - ($usage->reasoningTokens ?? 0)),
+                'cache_write_tokens' => $usage->cacheWriteInputTokens ?? 0,
+                'cache_read_tokens' => $usage->cacheReadInputTokens ?? 0,
+                'reasoning_tokens' => $usage->reasoningTokens ?? 0,
                 'status' => AiUsageStatus::Completed->value,
             ];
 

@@ -18,10 +18,11 @@
     "illuminate/events": "^12.0"
   },
   "suggest": {
-    "laravel/ai": "Enable automatic logging via laravel/ai events.",
+    "laravel/ai": "Enable automatic logging via laravel/ai events; v0.11.0+ supports immediate failure tracking.",
     "filament/filament": "Enable Filament panel integration (resource + widget)."
   },
   "require-dev": {
+    "laravel/ai": "^0.11.0|^1.0",
     "phpunit/phpunit": "^11.0",
     "orchestra/testbench": "^10.0"
   },

@@ -8,6 +8,7 @@ Track and log AI usage (tokens, cost, duration) for any Laravel application, wit
 
 - PHP 8.3+
 - Laravel 12.x
+- Optional: `laravel/ai` v0.11.0+ for immediate failure tracking. Older SDK versions continue to use the stale-record timeout.
 
 ## Installation
 
@@ -24,12 +25,13 @@ php artisan migrate
 
 ## How It Works
 
-This package hooks into the `laravel/ai` SDK lifecycle via two events:
+This package hooks into the `laravel/ai` SDK lifecycle via these events:
 
-1. **`PromptingAgent`** — fired when an agent starts. The package creates a **pending** record with the agent class, label, and an invocation ID.
-2. **`AgentPrompted`** — fired when the agent completes. The package locates the pending record, fills in token counts, duration, model/driver info, and snapshots the token prices from your config.
+1. **`PromptingAgent`** — fired when an agent prompt starts. The package creates a **processing** record with the agent class, label, and an invocation ID. Failover attempts sharing that ID reuse the same record.
+2. **`AgentPrompted`** — fired when the agent completes. The package updates the record to **completed**, fills in token counts, duration, model/driver info, and snapshots the token prices from your config.
+3. **`AgentFailed`** — available in SDK v0.11.0+. The package immediately marks a terminal failure as **failed**, storing the provider, model, exception type, and message. If no start record exists, it creates a failed record directly.
 
-The result is a complete, immutable log of every AI call — no manual code required if you use `laravel/ai`.
+Calls are correlated by invocation ID, with no manual logging code required for these SDK events.
 
 If you're not using `laravel/ai`, you can log calls manually via the fluent `AiUsage` facade (see [Manual logging](#manual-logging)).
 
@@ -44,7 +46,7 @@ The config file (`config/ai-usage.php`) exposes the following options:
 | `log_system_prompt` | `false` | Store system prompts in the log |
 | `log_response_text` | `true` | Store AI response bodies |
 | `max_text_length` | `10_000` | Truncate prompt/response text (chars); `null` disables |
-| `stale_timeout_minutes` | `60` | Minutes before a `processing` record is considered stale |
+| `stale_timeout_minutes` | `30` | Minutes before a `processing` record is considered stale |
 | `auto_discover` | `true` | Auto-listen to `laravel/ai` events |
 | `attach_authenticated_user` | `false` | Associate auto-discovered logs with the authenticated user |
 | `show_costs` | `true` | Show estimated costs and pricing details in the Filament UI |
@@ -98,9 +100,17 @@ This only affects the UI. The package continues to snapshot configured or manual
 
 ### Auto-discovery mode
 
-When `auto_discover` is `true` (default) and `laravel/ai` is installed, the package automatically listens for `Laravel\Ai\Events\PromptingAgent` and `Laravel\Ai\Events\AgentPrompted`. A pending record is created when the agent starts, then updated with tokens, duration, model info, and cost data when the agent finishes.
+When `auto_discover` is `true` (default) and `laravel/ai` is installed, the package automatically listens for `Laravel\Ai\Events\PromptingAgent` and `Laravel\Ai\Events\AgentPrompted`. A processing record is created when the prompt starts, then updated with tokens, duration, model info, and cost data when the agent finishes. With SDK v0.11.0+, it also listens for `Laravel\Ai\Events\AgentFailed`.
 
 To disable auto-discovery, set `auto_discover` to `false` in `config/ai-usage.php`.
+
+### Automatic failure tracking
+
+With `laravel/ai` v0.11.0 or later, terminal failures are logged immediately, including failures during streaming. The log stores the exception class in `response_meta.error.type` and its message in `response_meta.error.message`, preserving other response metadata. When a processing record exists, its elapsed duration is recorded too.
+
+An intermediate provider failure followed by failover does not mark the call as failed: the record remains processing until the SDK reports success or a terminal failure. A failure event does not overwrite an already completed log.
+
+The SDK remains optional. With older SDK versions, or when a process is killed before it can emit an event, keep scheduling `ai-usage:mark-stale-failed` as a fallback. No new configuration or database migration is required for immediate failure tracking.
 
 ### Attach an owner automatically
 
@@ -224,13 +234,13 @@ php artisan ai-usage:prune --days=90
 
 ### Mark stale records as failed
 
-If an AI call throws an exception, the `laravel/ai` SDK never fires `AgentPrompted`, so the record stays in `processing` status indefinitely. Run this command on a schedule to mark those stale records as `failed`:
+On SDK v0.11.0+, `AgentFailed` marks terminal failures immediately. Older SDK versions and abruptly terminated processes can still leave records in `processing`. Keep this command scheduled to mark those stale records as `failed`:
 
 ```bash
 php artisan ai-usage:mark-stale-failed
 ```
 
-The timeout is controlled by `stale_timeout_minutes` in your config (default: `60`). You can also override it per-call:
+The timeout is controlled by `stale_timeout_minutes` in your config (default: `30`). You can also override it per command execution:
 
 ```bash
 php artisan ai-usage:mark-stale-failed --minutes=30
@@ -246,7 +256,7 @@ Schedule::command('ai-usage:prune')->daily();
 ## Testing
 
 ```bash
-composer test
+vendor/bin/phpunit
 ```
 
 ## License
