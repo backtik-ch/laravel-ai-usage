@@ -24,6 +24,8 @@ class LogPromptingAgent
             $data = [
                 'agent_class' => $agentClass,
                 'label' => $agentClass ? AiUsageLog::labelFromClass($agentClass) : null,
+                'driver' => $prompt->provider->name(),
+                'model' => $prompt->model,
                 'status' => AiUsageStatus::Processing->value,
                 'request_meta' => [
                     'invocation_id' => $event->invocationId,
@@ -55,9 +57,16 @@ class LogPromptingAgent
                     : $userPrompt;
             }
 
-            AiUsageLog::query()
+            $record = AiUsageLog::query()
                 ->where('request_meta->invocation_id', $event->invocationId)
                 ->firstOrCreate([], $data);
+
+            if (! $record->wasRecentlyCreated && $record->status === AiUsageStatus::Processing) {
+                $record->update([
+                    'driver' => $data['driver'],
+                    'model' => $data['model'],
+                ]);
+            }
         } catch (\Throwable $e) {
             Log::error('[laravel-ai-usage] Failed to log prompting agent.', [
                 'error' => $e->getMessage(),

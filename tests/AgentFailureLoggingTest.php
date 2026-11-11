@@ -85,15 +85,33 @@ class AgentFailureLoggingTest extends TestCase
 
     public function test_failover_keeps_one_processing_log_and_can_complete_successfully(): void
     {
+        $this->travelTo(now()->startOfSecond());
         $usage = class_exists(TextUsage::class)
             ? new TextUsage(inputTokens: 150, outputTokens: 50, cacheReadInputTokens: 20, cacheWriteInputTokens: 30, reasoningTokens: 10)
             : new Usage(promptTokens: 100, completionTokens: 40, cacheWriteInputTokens: 30, cacheReadInputTokens: 20, reasoningTokens: 10);
         $agent = $this->agent();
         $attempts = 0;
-        $agent::fake(function () use (&$attempts, $usage) {
+        $startedAt = null;
+        $agent::fake(function ($text, $attachments, $provider, $model) use (&$attempts, &$startedAt, $usage) {
+            $log = AiUsageLog::query()->firstOrFail();
+            $this->assertSame(AiUsageStatus::Processing, $log->status);
+            $this->assertSame($provider->name(), $log->driver);
+            $this->assertSame($model, $log->model);
+
             if (++$attempts === 1) {
+                $startedAt = $log->created_at->toISOString();
+                $log->update([
+                    'label' => 'custom-label',
+                    'request_meta' => array_merge($log->request_meta, ['custom' => 'preserved']),
+                ]);
+                $this->travel(2)->seconds();
+
                 throw RateLimitedException::forProvider('openai');
             }
+
+            $this->assertSame($startedAt, $log->created_at->toISOString());
+            $this->assertSame('custom-label', $log->label);
+            $this->assertSame('preserved', $log->request_meta['custom']);
 
             return new AgentResponse('fake', 'Hello!', $usage, new Meta('anthropic', 'claude-test'));
         });
@@ -115,6 +133,7 @@ class AgentFailureLoggingTest extends TestCase
         $this->assertSame(AiUsageStatus::Completed, $log->status);
         $this->assertSame('anthropic', $log->driver);
         $this->assertSame('claude-test', $log->model);
+        $this->assertSame(2000, $log->duration_ms);
         $this->assertSame(100, $log->prompt_tokens);
         $this->assertSame(40, $log->completion_tokens);
         $this->assertSame(30, $log->cache_write_tokens);
@@ -124,6 +143,27 @@ class AgentFailureLoggingTest extends TestCase
 
         Event::dispatch(new AgentFailed($response->invocationId, $this->prompt(), new RuntimeException('Late failure')));
         $this->assertSame(AiUsageStatus::Completed, $log->fresh()->status);
+    }
+
+    public function test_start_events_preserve_finalized_logs(): void
+    {
+        foreach ([AiUsageStatus::Completed, AiUsageStatus::Failed] as $status) {
+            $log = AiUsageLog::query()->create([
+                'status' => $status,
+                'driver' => 'original-provider',
+                'model' => 'original-model',
+                'request_meta' => ['invocation_id' => $status->value],
+            ]);
+
+            Event::dispatch(new PromptingAgent($status->value, $this->prompt()));
+
+            $log->refresh();
+            $this->assertSame($status, $log->status);
+            $this->assertSame('original-provider', $log->driver);
+            $this->assertSame('original-model', $log->model);
+        }
+
+        $this->assertSame(2, AiUsageLog::query()->count());
     }
 
     public function test_duplicate_failure_events_do_not_create_duplicate_logs(): void

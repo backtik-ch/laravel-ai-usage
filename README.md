@@ -27,7 +27,7 @@ php artisan migrate
 
 This package hooks into the `laravel/ai` SDK lifecycle via these events:
 
-1. **`PromptingAgent`** — fired when an agent prompt starts. The package creates a **processing** record with the agent class, label, and an invocation ID. Failover attempts sharing that ID reuse the same record.
+1. **`PromptingAgent`** — fired when an agent prompt starts. The package creates a **processing** record with the provider, model, agent class, label, and an invocation ID. Failover attempts sharing that ID reuse the same record and update its provider and model to reflect the current attempt, preserving the original start time and other log data.
 2. **`AgentPrompted`** — fired when the agent completes. The package updates the record to **completed**, fills in token counts, duration, model/driver info, and snapshots the token prices from your config.
 3. **`AgentFailed`** — available in SDK v0.11.0+. The package immediately marks a terminal failure as **failed**, storing the provider, model, exception type, and message. If no start record exists, it creates a failed record directly.
 
@@ -100,7 +100,7 @@ This only affects the UI. The package continues to snapshot configured or manual
 
 ### Auto-discovery mode
 
-When `auto_discover` is `true` (default) and `laravel/ai` is installed, the package automatically listens for `Laravel\Ai\Events\PromptingAgent` and `Laravel\Ai\Events\AgentPrompted`. A processing record is created when the prompt starts, then updated with tokens, duration, model info, and cost data when the agent finishes. With SDK v0.11.0+, it also listens for `Laravel\Ai\Events\AgentFailed`.
+When `auto_discover` is `true` (default) and `laravel/ai` is installed, the package automatically listens for `Laravel\Ai\Events\PromptingAgent` and `Laravel\Ai\Events\AgentPrompted`. A processing record with the provider and model is created when the prompt starts, then updated with tokens, duration, final provider/model info, and cost data when the agent finishes. Provider and model changes during failover are reflected on the processing record. With SDK v0.11.0+, it also listens for `Laravel\Ai\Events\AgentFailed`.
 
 To disable auto-discovery, set `auto_discover` to `false` in `config/ai-usage.php`.
 
